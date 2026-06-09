@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-GREASPY: standalone GREASE/GREASY workbook replacement.
+GREASPY: standalone GREASE/GREASY spectrum tool.
 
-This script reproduces the primary workflow from:
-- GREASY_Rev3.xlsx
+This script uses the validated GREASPY data catalog packaged with the code.
 
 Features:
 - Select up to 10 isotopes and activities
 - Set counting time, distance, background inclusion
-- Optional shielding (for workbooks that include shielding coefficients)
+- Optional shielding
 - Compute total spectrum and key summary metrics
 - Plot spectrum and isotope contributions
 - Export PeakEasy-compatible .spe files
@@ -17,8 +16,9 @@ Features:
 from __future__ import annotations
 
 import datetime as _dt
+import gzip
+import json
 import math
-import os
 import platform
 import sys
 import tkinter as tk
@@ -26,10 +26,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 try:
     import matplotlib
+    matplotlib.use("TkAgg")
     import matplotlib.pyplot as plt
     from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
     MATPLOTLIB_VERSION = getattr(matplotlib, "__version__", "unknown")
@@ -40,13 +41,10 @@ except Exception:
     NavigationToolbar2Tk = None
     MATPLOTLIB_VERSION = "not available"
 
-from openpyxl import __version__ as OPENPYXL_VERSION
-from openpyxl import load_workbook
-from openpyxl.utils import column_index_from_string
-
-
 DEAD_TIME_FACTOR = 0.0000580138947
 NUM_BINS = 16384
+DATA_SCHEMA_VERSION = 1
+DEFAULT_DATA_FILE = "greaspy_validated_data.json.gz"
 APP_NAME = "GREASPY"
 APP_TITLE = "GREASPY - GREASE/GREASY Standalone"
 APP_VERSION = "2026.03.19"
@@ -57,11 +55,8 @@ APP_AUTHORS = [
     "Dr. Tommy Holschuh",
 ]
 APP_ORGANIZATION = "Idaho National Laboratory"
-DEFAULT_WORKBOOK_NAMES = [
-    "GREASY_Rev3.xlsx",
-]
 APP_FEATURES = [
-    "Load packaged GREASE/GREASY workbook data or compatible workbook files placed beside the app.",
+    "Use the packaged, validated GREASPY data catalog without Excel files at runtime.",
     "Select up to 10 isotopes with user-defined activities in curies.",
     "Set live counting time, source-to-detector distance, and optional background inclusion.",
     "Apply multi-layer shielding thicknesses for polyethylene, aluminum, stainless steel 316, tungsten, lead, and depleted uranium.",
@@ -82,10 +77,11 @@ SHIELDING_MATERIALS = [
 
 
 @dataclass
-class IsotopeMeta:
+class IsotopeData:
     name: str
-    sheet: str
-    col_letter: str
+    dose_per_ci: float
+    gammas_per_ci: float
+    spectrum_cps: List[float]
     comment: str = ""
 
 
@@ -121,141 +117,103 @@ class CalcResults:
     eff_b: float
 
 
+def _validated_data_candidates() -> List[Path]:
+    roots: List[Path] = []
+
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        roots.append(Path(meipass))
+
+    if getattr(sys, "frozen", False):
+        roots.append(Path(sys.executable).resolve().parent)
+
+    roots.append(Path(__file__).resolve().parent)
+    roots.append(Path.cwd())
+
+    candidates: List[Path] = []
+    seen = set()
+    for root in roots:
+        p = (root / "data" / DEFAULT_DATA_FILE).resolve()
+        key = str(p).lower()
+        if key not in seen:
+            seen.add(key)
+            candidates.append(p)
+    return candidates
+
+
+def _default_validated_data_path() -> Path:
+    candidates = _validated_data_candidates()
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    searched = "\n".join(f"- {candidate}" for candidate in candidates)
+    raise FileNotFoundError(f"Could not locate {DEFAULT_DATA_FILE}. Searched:\n{searched}")
+
+
+def _float_list(values: List[Any], expected_len: int, label: str) -> List[float]:
+    if len(values) != expected_len:
+        raise RuntimeError(f"{label} has {len(values)} values; expected {expected_len}.")
+    return [float(v) for v in values]
+
+
 class GreaseDataModel:
-    """Loads workbook data and computes spectra equivalent to GREASY/GREASE sheets."""
+    """Loads the packaged validated GREASPY data catalog and computes spectra."""
 
-    def __init__(self, workbook_path: Path):
-        self.workbook_path = workbook_path
-        self.wb = load_workbook(workbook_path, data_only=True, read_only=False)
+    def __init__(self, data_path: Optional[Path] = None):
+        self.data_path = Path(data_path).resolve() if data_path else _default_validated_data_path()
+        with gzip.open(self.data_path, "rt", encoding="utf-8") as f:
+            payload: Dict[str, Any] = json.load(f)
 
-        self.user_ws = self.wb["USER"]
-        self.fp_ws = self.wb["FP"]
-        self.other_ws = self.wb["Other"]
-        self.bg_ws = self.wb["BG"]
+        if payload.get("schema_version") != DATA_SCHEMA_VERSION:
+            raise RuntimeError(
+                f"Unsupported GREASPY data schema: {payload.get('schema_version')}. "
+                f"Expected {DATA_SCHEMA_VERSION}."
+            )
+        if int(payload.get("num_bins", 0)) != NUM_BINS:
+            raise RuntimeError(f"GREASPY data catalog must contain {NUM_BINS} bins.")
 
-        self.has_shielding = "Shielding" in self.wb.sheetnames
-        self.shielding_ws = self.wb["Shielding"] if self.has_shielding else None
+        materials = payload.get("shielding_materials", [])
+        if materials != SHIELDING_MATERIALS:
+            raise RuntimeError("GREASPY data catalog shielding material order is incompatible.")
 
-        self.profile = self._detect_profile()
-        self.isotope_map = self._build_isotope_map()
+        source = payload.get("source", {})
+        self.data_version = str(payload.get("data_version", "unknown"))
+        self.source_name = str(source.get("name", "unknown"))
+        self.source_sha256 = str(source.get("sha256", "unknown"))
+        self.profile = str(source.get("profile", "unknown"))
 
-        self.energy_kev = self._read_energy_axis()
-        self.bg_cps = self._read_background_cps()
+        self.energy_kev = _float_list(payload["energy_kev"], NUM_BINS, "energy_kev")
+        self.bg_cps = _float_list(payload["background_cps"], NUM_BINS, "background_cps")
+        self.shield_density = _float_list(payload.get("shield_density", []), len(SHIELDING_MATERIALS), "shield_density")
 
-        self.shield_mu = self._read_shielding_coeffs() if self.has_shielding else {}
-        self.shield_density = self._read_shielding_density() if self.has_shielding else []
+        raw_shield_mu = payload.get("shield_mu", {})
+        self.shield_mu = {
+            material: _float_list(raw_shield_mu[material], NUM_BINS, f"shield_mu[{material}]")
+            for material in SHIELDING_MATERIALS
+        }
+        self.has_shielding = bool(self.shield_mu and self.shield_density)
 
-    def _detect_profile(self) -> str:
-        if "INSTRUCTIONS" in self.wb.sheetnames:
-            return "common"
-        return "full"
+        raw_isotopes = payload.get("isotopes", {})
+        if not raw_isotopes:
+            raise RuntimeError("GREASPY data catalog contains no isotopes.")
 
-    def _build_isotope_map(self) -> Dict[str, IsotopeMeta]:
-        iso_map: Dict[str, IsotopeMeta] = {}
-
-        if self.profile == "common":
-            start_row = 11
-            iso_col, sheet_col, col_col, comment_col = 25, 26, 27, 28
-        else:
-            start_row = 10
-            iso_col, sheet_col, col_col, comment_col = 24, 25, 26, 27
-
-        for r in range(start_row, 5000):
-            name = self.user_ws.cell(r, iso_col).value
-            sheet = self.user_ws.cell(r, sheet_col).value
-            col = self.user_ws.cell(r, col_col).value
-            comment = self.user_ws.cell(r, comment_col).value if comment_col else ""
-
-            if name is None and sheet is None and col is None:
-                if r > start_row + 50:
-                    break
-                continue
-
-            if not name or not sheet or not col:
-                continue
-
-            name = str(name).strip()
-            sheet = str(sheet).strip()
-            col = str(col).strip()
-            comment = "" if comment is None else str(comment).strip()
-
-            if sheet not in ("FP", "Other"):
-                continue
-
-            iso_map[name] = IsotopeMeta(name=name, sheet=sheet, col_letter=col, comment=comment)
-
-        if not iso_map:
-            raise RuntimeError("No isotope mapping data found in USER sheet.")
-
-        return dict(sorted(iso_map.items(), key=lambda kv: kv[0].upper()))
-
-    def _read_energy_axis(self) -> List[float]:
-        axis = []
-        for r in range(5, 5 + NUM_BINS):
-            ev = self.fp_ws.cell(r, 1).value
-            axis.append((float(ev) * 1000.0) if ev is not None else 0.0)
-        return axis
-
-    def _read_background_cps(self) -> List[float]:
-        col_idx = 1 if self.bg_ws.cell(1, 1).value is not None else 2
-        out = []
-        for r in range(2, 2 + NUM_BINS):
-            v = self.bg_ws.cell(r, col_idx).value
-            out.append(float(v) if v is not None else 0.0)
-        return out
-
-    def _read_shielding_density(self) -> List[float]:
-        if not self.shielding_ws:
-            return []
-        # Row 2, cols B:G
-        vals = []
-        for c in range(2, 8):
-            v = self.shielding_ws.cell(2, c).value
-            vals.append(float(v) if v is not None else 0.0)
-        return vals
-
-    def _read_shielding_coeffs(self) -> Dict[str, List[float]]:
-        if not self.shielding_ws:
-            return {}
-
-        coeffs: Dict[str, List[float]] = {}
-        for idx, material in enumerate(SHIELDING_MATERIALS):
-            col = 2 + idx
-            arr = []
-            for r in range(4, 4 + NUM_BINS):
-                v = self.shielding_ws.cell(r, col).value
-                arr.append(float(v) if v is not None else 0.0)
-            coeffs[material] = arr
-        return coeffs
+        isotopes: Dict[str, IsotopeData] = {}
+        for name, raw in raw_isotopes.items():
+            isotopes[str(name)] = IsotopeData(
+                name=str(name),
+                dose_per_ci=float(raw.get("dose_per_ci", 0.0)),
+                gammas_per_ci=float(raw.get("gammas_per_ci", 0.0)),
+                spectrum_cps=_float_list(raw["spectrum_cps"], NUM_BINS, f"isotopes[{name}].spectrum_cps"),
+                comment=str(raw.get("comment", "")),
+            )
+        self.isotope_map = dict(sorted(isotopes.items(), key=lambda kv: kv[0].upper()))
 
     def isotope_names(self) -> List[str]:
         return list(self.isotope_map.keys())
 
     def isotope_suggestion(self, name: str) -> str:
-        meta = self.isotope_map.get(name)
-        return meta.comment if meta else ""
-
-    def _ws_for_meta(self, meta: IsotopeMeta):
-        return self.fp_ws if meta.sheet == "FP" else self.other_ws
-
-    def _read_isotope_constants(self, meta: IsotopeMeta) -> Tuple[float, float]:
-        ws = self._ws_for_meta(meta)
-        c = column_index_from_string(meta.col_letter)
-
-        dose_per_ci = ws.cell(3, c).value
-        gammas_per_ci = ws.cell(4, c).value
-
-        return float(dose_per_ci or 0.0), float(gammas_per_ci or 0.0)
-
-    def _read_isotope_spectrum_cps(self, meta: IsotopeMeta) -> List[float]:
-        ws = self._ws_for_meta(meta)
-        c = column_index_from_string(meta.col_letter)
-
-        out = []
-        for r in range(5, 5 + NUM_BINS):
-            v = ws.cell(r, c).value
-            out.append(float(v) if v is not None else 0.0)
-        return out
+        isotope = self.isotope_map.get(name)
+        return isotope.comment if isotope else ""
 
     def compute(self, inp: CalcInputs) -> CalcResults:
         if inp.count_time_sec <= 0:
@@ -269,9 +227,9 @@ class GreaseDataModel:
 
         for name, _ in active:
             if name not in self.isotope_map:
-                raise ValueError(f"Isotope '{name}' not found in loaded workbook mapping.")
+                raise ValueError(f"Isotope '{name}' not found in the validated GREASPY data catalog.")
 
-        # Build attenuation curve (1.0 for unshielded or if workbook has no shielding sheet)
+        # Build attenuation curve, or use 1.0 for unshielded cases.
         attenuation = [1.0] * NUM_BINS
         total_shield_thickness = sum(max(0.0, inp.shielding_cm.get(m, 0.0)) for m in SHIELDING_MATERIALS)
 
@@ -300,9 +258,10 @@ class GreaseDataModel:
         unshielded_gammas_emitted_s = 0.0
 
         for name, activity_ci in active:
-            meta = self.isotope_map[name]
-            dose_per_ci, gammas_per_ci = self._read_isotope_constants(meta)
-            cps_vec = self._read_isotope_spectrum_cps(meta)
+            isotope = self.isotope_map[name]
+            dose_per_ci = isotope.dose_per_ci
+            gammas_per_ci = isotope.gammas_per_ci
+            cps_vec = isotope.spectrum_cps
 
             # Excel scale: spectrum * activity * live_time * 100 / distance^2
             scaled_unshielded = [
@@ -388,7 +347,6 @@ class GreaseApp(tk.Tk):
         self.model: Optional[GreaseDataModel] = None
         self.results: Optional[CalcResults] = None
 
-        self.workbook_var = tk.StringVar()
         self.count_time_var = tk.StringVar(value="300")
         self.distance_var = tk.StringVar(value="20")
         self.include_bg_var = tk.BooleanVar(value=True)
@@ -400,10 +358,10 @@ class GreaseApp(tk.Tk):
         self.shield_vars = {m: tk.StringVar(value="0") for m in SHIELDING_MATERIALS}
         self.suggestion_vars = [tk.StringVar(value="") for _ in range(10)]
 
-        self.summary_var = tk.StringVar(value="Load a workbook to begin.")
+        self.summary_var = tk.StringVar(value="Loading validated GREASPY data catalog...")
 
         self._build_ui()
-        self._try_autoload_default()
+        self._load_data_catalog()
 
     def _build_ui(self):
         main = ttk.Panedwindow(self, orient=tk.HORIZONTAL)
@@ -508,57 +466,37 @@ class GreaseApp(tk.Tk):
             self.toolbar = None
             ttk.Label(plot_wrap, text="matplotlib not available - plotting disabled.").pack(anchor=tk.W)
 
-    def _try_autoload_default(self):
-        candidates = self._default_workbook_candidates()
-        for p in candidates:
-            if p.exists():
-                self.workbook_var.set(str(p))
-                try:
-                    self._load_workbook()
-                except Exception:
-                    pass
-                break
+    def _load_data_catalog(self):
+        self.summary_var.set("Loading validated GREASPY data catalog...")
+        self.update_idletasks()
 
-    def _default_workbook_candidates(self) -> List[Path]:
-        roots: List[Path] = []
+        self.model = GreaseDataModel()
 
-        # PyInstaller one-file extraction directory
-        meipass = getattr(sys, "_MEIPASS", None)
-        if meipass:
-            roots.append(Path(meipass))
+        names = self.model.isotope_names()
+        combo_values = [""] + names
+        for i in range(10):
+            combo: ttk.Combobox = getattr(self, f"iso_combo_{i}")
+            combo.configure(values=combo_values, state="readonly")
+            combo.set("")
+            self.suggestion_vars[i].set("")
 
-        if getattr(sys, "frozen", False):
-            exe_dir = Path(sys.executable).resolve().parent
-            roots.append(exe_dir)
-            roots.append(exe_dir.parent)
+        if not self.model.has_shielding:
+            for m in SHIELDING_MATERIALS:
+                self.shield_vars[m].set("0")
 
-        # Script directory and project root
-        script_path = Path(__file__).resolve()
-        roots.append(script_path.parent)
-        if script_path.parent.name.lower() == "python greasy":
-            roots.append(script_path.parent.parent)
-
-        # Working directory as last fallback
-        roots.append(Path.cwd())
-
-        out: List[Path] = []
-        seen = set()
-        for root in roots:
-            for n in DEFAULT_WORKBOOK_NAMES:
-                p = root / n
-                key = str(p).lower()
-                if key not in seen:
-                    seen.add(key)
-                    out.append(p)
-        return out
+        self.summary_var.set(
+            "Loaded validated GREASPY data catalog\n"
+            f"Data version: {self.model.data_version} | Profile: {self.model.profile} | "
+            f"Isotopes: {len(names)} | Shielding data: {self.model.has_shielding}"
+        )
 
     def _about_text(self) -> str:
         runtime_mode = "Executable" if getattr(sys, "frozen", False) else "Python script"
-        workbook_status = "No workbook loaded"
+        data_status = "Data catalog not loaded"
         if self.model is not None:
-            workbook_status = (
-                f"{self.model.workbook_path.name} | profile={self.model.profile} | "
-                f"shielding={self.model.has_shielding}"
+            data_status = (
+                f"{self.model.data_path.name} | version={self.model.data_version} | "
+                f"profile={self.model.profile} | shielding={self.model.has_shielding}"
             )
 
         lines = [
@@ -582,13 +520,13 @@ class GreaseApp(tk.Tk):
                 f"- Python: {platform.python_version()}",
                 f"- Tk: {tk.TkVersion}",
                 f"- matplotlib: {MATPLOTLIB_VERSION}",
-                f"- openpyxl: {OPENPYXL_VERSION}",
                 "",
-                "Packaged default workbook filenames:",
-                *(f"- {name}" for name in DEFAULT_WORKBOOK_NAMES),
+                "Validated Data:",
+                f"- Catalog: {data_status}",
+                f"- Source data snapshot: {self.model.source_name if self.model else 'unknown'}",
+                f"- Source SHA256: {self.model.source_sha256 if self.model else 'unknown'}",
                 "",
                 "Current Session:",
-                f"- Workbook: {workbook_status}",
                 f"- Results available: {'Yes' if self.results is not None else 'No'}",
             ]
         )
@@ -615,48 +553,6 @@ class GreaseApp(tk.Tk):
         dialog.bind("<Escape>", lambda _event: dialog.destroy())
         dialog.focus_set()
 
-    def _browse_workbook(self):
-        path = filedialog.askopenfilename(
-            title="Select GREASE/GREASY workbook",
-            filetypes=[("Excel files", "*.xlsx")],
-        )
-        if path:
-            self.workbook_var.set(path)
-
-    def _set_shielding_enabled(self, enabled: bool):
-        state = "normal" if enabled else "disabled"
-        for material in SHIELDING_MATERIALS:
-            # We locate the entry widget by shared variable usage through children traversal.
-            # Simple approach: leave values but gate at calculation.
-            _ = state
-
-    def _load_workbook(self):
-        path = Path(self.workbook_var.get().strip())
-        if not path.exists():
-            raise FileNotFoundError(f"Workbook not found: {path}")
-
-        self.summary_var.set("Loading workbook data...")
-        self.update_idletasks()
-
-        self.model = GreaseDataModel(path)
-
-        names = self.model.isotope_names()
-        combo_values = [""] + names
-        for i in range(10):
-            combo: ttk.Combobox = getattr(self, f"iso_combo_{i}")
-            combo.configure(values=combo_values, state="readonly")
-            combo.set("")
-            self.suggestion_vars[i].set("")
-
-        if not self.model.has_shielding:
-            for m in SHIELDING_MATERIALS:
-                self.shield_vars[m].set("0")
-
-        self.summary_var.set(
-            f"Loaded {path.name}\n"
-            f"Profile: {self.model.profile} | Isotopes: {len(names)} | Shielding data: {self.model.has_shielding}"
-        )
-
     def _update_suggestion(self, idx: int):
         if not self.model:
             return
@@ -674,7 +570,7 @@ class GreaseApp(tk.Tk):
 
     def _collect_inputs(self) -> CalcInputs:
         if not self.model:
-            raise RuntimeError("Load a workbook first.")
+            raise RuntimeError("Validated GREASPY data catalog is not loaded.")
 
         isotopes: List[Tuple[str, float]] = []
         for i in range(10):

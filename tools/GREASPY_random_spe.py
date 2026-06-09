@@ -16,9 +16,8 @@ import argparse
 import datetime as dt
 import math
 import random
-import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Sequence, Tuple
 
 from GREASPY import CalcInputs, CalcResults, GreaseDataModel, SHIELDING_MATERIALS
 
@@ -45,44 +44,6 @@ def _activity_tag(v: float) -> str:
     s = f"{v:.2e}".replace("+", "")
     s = s.replace(".", "p").replace("-", "m")
     return s
-
-
-def resolve_workbook(path_arg: Optional[str]) -> Path:
-    if path_arg:
-        p = Path(path_arg).expanduser().resolve()
-        if not p.exists():
-            raise FileNotFoundError(f"Workbook not found: {p}")
-        return p
-
-    names = [
-        "GREASY_Rev3.xlsx",
-    ]
-
-    roots: List[Path] = []
-    meipass = getattr(sys, "_MEIPASS", None)
-    if meipass:
-        roots.append(Path(meipass))
-
-    script_dir = Path(__file__).resolve().parent
-    roots.append(script_dir)
-    roots.append(script_dir.parent)
-    roots.append(Path.cwd())
-
-    seen = set()
-    for root in roots:
-        for n in names:
-            p = (root / n).resolve()
-            key = str(p).lower()
-            if key in seen:
-                continue
-            seen.add(key)
-            if p.exists():
-                return p
-
-    raise FileNotFoundError(
-        "Could not locate a GREAS workbook automatically. "
-        "Use --workbook to specify a path."
-    )
 
 
 def choose_background(mode: str, rng: random.Random) -> bool:
@@ -204,7 +165,6 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Generate randomized .spe files using GREASPY calculations."
     )
-    parser.add_argument("--workbook", type=str, default=None, help="Path to workbook .xlsx (optional).")
     parser.add_argument("--output", type=str, default=None, help="Output .spe path.")
     parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility.")
     parser.add_argument("--count-time", type=float, default=300.0, help="Live counting time in seconds.")
@@ -278,8 +238,7 @@ def main() -> None:
         raise ValueError("--max-shield-materials must be >= 0")
 
     rng = random.Random(args.seed)
-    workbook_path = resolve_workbook(args.workbook)
-    model = GreaseDataModel(workbook_path)
+    model = GreaseDataModel()
 
     all_isotopes = model.isotope_names()
     allowed = set(all_isotopes)
@@ -366,7 +325,7 @@ def main() -> None:
     out_path.write_text("\n".join(spe_lines) + "\n", encoding="utf-8")
 
     print(f"Wrote SPE: {out_path}")
-    print(f"Workbook: {workbook_path}")
+    print(f"Data catalog: {model.data_path}")
     print(f"Background: {'YES' if include_bg else 'NO'}")
     print("Selected isotopes:")
     for name, act in selected:

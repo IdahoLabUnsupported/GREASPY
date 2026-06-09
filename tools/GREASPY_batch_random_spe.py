@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 from GREASPY import CalcInputs, GreaseDataModel, SHIELDING_MATERIALS
-from GREASPY_random_spe import build_default_filename, build_spe_lines, resolve_workbook
+from GREASPY_random_spe import build_default_filename, build_spe_lines
 
 
 def sample_activity(rng: random.Random, low: float, high: float, space: str) -> float:
@@ -29,7 +29,6 @@ def main() -> None:
         description="Generate a batch of randomized GREASPY SPE files into one folder."
     )
     parser.add_argument("--count", type=int, default=100, help="Number of SPE files to generate.")
-    parser.add_argument("--workbook", type=str, default=None, help="Optional workbook path.")
     parser.add_argument("--outdir", type=str, default=None, help="Output directory for SPE files.")
     parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility.")
 
@@ -113,14 +112,13 @@ def main() -> None:
 
     rng = random.Random(args.seed)
 
-    workbook = resolve_workbook(args.workbook)
-    model = GreaseDataModel(workbook)
+    model = GreaseDataModel()
     all_isotopes = model.isotope_names()
 
     max_iso = min(args.max_isotopes, len(all_isotopes))
     min_iso = min(args.min_isotopes, max_iso)
     if max_iso < 1:
-        raise ValueError("No isotopes available in workbook.")
+        raise ValueError("No isotopes available in the validated GREASPY data catalog.")
 
     if args.outdir:
         outdir = Path(args.outdir).expanduser().resolve()
@@ -129,7 +127,7 @@ def main() -> None:
         outdir = (Path.cwd() / f"greaspy_batch_{stamp}").resolve()
     outdir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Workbook: {workbook}")
+    print(f"Data catalog: {model.data_path}")
     print(f"Output dir: {outdir}")
     print(f"Generating {args.count} files...")
 

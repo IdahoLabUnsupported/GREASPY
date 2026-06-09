@@ -13,7 +13,6 @@ import datetime as dt
 import json
 import math
 import random
-import sys
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog
@@ -37,43 +36,6 @@ def _safe_token(s: str) -> str:
     while "__" in token:
         token = token.replace("__", "_")
     return token.strip("_")
-
-
-def resolve_workbook(path_arg: Optional[str]) -> Path:
-    if path_arg:
-        p = Path(path_arg).expanduser().resolve()
-        if not p.exists():
-            raise FileNotFoundError(f"Workbook not found: {p}")
-        return p
-
-    names = [
-        "GREASY_Rev3.xlsx",
-    ]
-
-    roots: List[Path] = []
-    meipass = getattr(sys, "_MEIPASS", None)
-    if meipass:
-        roots.append(Path(meipass))
-
-    script_dir = Path(__file__).resolve().parent
-    roots.append(script_dir)
-    roots.append(script_dir.parent)
-    roots.append(Path.cwd())
-
-    seen = set()
-    for root in roots:
-        for n in names:
-            p = (root / n).resolve()
-            key = str(p).lower()
-            if key in seen:
-                continue
-            seen.add(key)
-            if p.exists():
-                return p
-
-    raise FileNotFoundError(
-        "Could not locate a GREAS workbook automatically. Use --workbook."
-    )
 
 
 def resolve_outdir(path_arg: Optional[str]) -> Path:
@@ -228,7 +190,6 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Uniformly sample GREASPY parameter space and export .spe files."
     )
-    parser.add_argument("--workbook", type=str, default=None, help="Path to workbook .xlsx (optional).")
     parser.add_argument("--outdir", type=str, default=None, help="Output directory for .spe files.")
     parser.add_argument("--samples", type=int, default=10, help="Number of samples / .spe files.")
     parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility.")
@@ -323,8 +284,7 @@ def main() -> None:
         raise ValueError("--shield-thickness-max-cm must be >= --shield-thickness-min-cm")
 
     rng = random.Random(args.seed)
-    workbook_path = resolve_workbook(args.workbook)
-    model = GreaseDataModel(workbook_path)
+    model = GreaseDataModel()
 
     all_isotopes = model.isotope_names()
     allowed = set(all_isotopes)
@@ -355,7 +315,7 @@ def main() -> None:
         allowed_shields = []
 
     if args.shield_mode == "on" and not allowed_shields:
-        raise ValueError("Workbook has no shielding data or no allowed shield materials.")
+        raise ValueError("Validated GREASPY data catalog has no shielding data or no allowed shield materials.")
 
     if allowed_shields:
         sh_min_n = args.shield_material_count_min
@@ -436,7 +396,8 @@ def main() -> None:
             print(f"[{i}/{args.samples}] wrote {out_path.name}")
 
     manifest = {
-        "workbook": str(workbook_path),
+        "data_catalog": str(model.data_path),
+        "data_version": model.data_version,
         "output_directory": str(outdir),
         "samples_requested": args.samples,
         "seed": args.seed,
@@ -446,7 +407,7 @@ def main() -> None:
     with manifest_path.open("w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
 
-    print(f"Workbook: {workbook_path}")
+    print(f"Data catalog: {model.data_path}")
     print(f"Output directory: {outdir}")
     print(f"Samples written: {args.samples}")
     print(f"Manifest: {manifest_path}")
