@@ -14,6 +14,8 @@ require the original Excel workbook to run.
 - `tools/GREASPY_batch_random_spe.py` - command-line generator for batches of randomized `.spe` files.
 - `tools/GREASPY_batch_random_spe-INL430125.py` - INL430125 batch-generation variant with manifest output and optional folder picker.
 - `tools/data/greaspy_validated_data.json.gz` - packaged validated GREASPY data catalog.
+- `CHANGELOG.md` - release history and notable project changes.
+- `LICENSE` - general-use project license.
 - `requirements.txt` - Python package dependencies for source runs.
 - `requirements-build.txt` - extra dependency for rebuilding the executable.
 
@@ -71,6 +73,10 @@ python .\tools\GREASPY_batch_random_spe-INL430125.py --outdir output\batch --sam
 
 Use `--help` with any command-line script to see its full option set.
 
+## Changelog
+
+See `CHANGELOG.md` for release history and notable changes.
+
 ## Rebuild the Executable
 
 Install the source and build dependencies:
@@ -96,3 +102,7 @@ The repo excludes:
 - generated `.spe` and `.csv` outputs
 - transient PyInstaller `build/` output
 - Python caches and virtual environments
+
+## License
+
+GREASPY is available under the MIT License. See `LICENSE` for details.
