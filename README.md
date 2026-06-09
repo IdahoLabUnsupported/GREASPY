@@ -10,6 +10,7 @@ require the original Excel workbook to run.
 
 - `bin/GREASPY.exe` - rebuilt Windows executable.
 - `tools/GREASPY.py` - Tkinter desktop application and shared calculation engine.
+- `tools/GREASPY_generate_spe.py` - deterministic command-line `.spe` generator from direct inputs or a JSON parameter file.
 - `tools/GREASPY_random_spe.py` - command-line generator for one randomized `.spe` file.
 - `tools/GREASPY_batch_random_spe.py` - command-line generator for batches of randomized `.spe` files.
 - `tools/GREASPY_batch_random_spe-INL430125.py` - INL430125 batch-generation variant with manifest output and optional folder picker.
@@ -59,6 +60,24 @@ Generate one randomized `.spe` file:
 python .\tools\GREASPY_random_spe.py --output output\sample.spe
 ```
 
+Generate one deterministic `.spe` file:
+
+```powershell
+python .\tools\GREASPY_generate_spe.py --isotope Eu152=1e-6 --count-time 600 --distance-cm 10 --background on --output output\eu152_10cm.spe
+```
+
+Generate deterministic spectra from a JSON parameter file:
+
+```powershell
+python .\tools\GREASPY_generate_spe.py --parameters parameters.json --outdir output\parameters
+```
+
+Write a starter parameter file:
+
+```powershell
+python .\tools\GREASPY_generate_spe.py --write-example parameters.example.json
+```
+
 Generate a batch of randomized `.spe` files:
 
 ```powershell
@@ -72,6 +91,47 @@ python .\tools\GREASPY_batch_random_spe-INL430125.py --outdir output\batch --sam
 ```
 
 Use `--help` with any command-line script to see its full option set.
+
+### Deterministic Parameter Files
+
+`GREASPY_generate_spe.py` accepts a single spectrum, explicit cases, or sweeps.
+Relative output paths are written under `--outdir`; if `--outdir` is omitted,
+they are written next to the parameter file.
+
+```json
+{
+  "defaults": {
+    "isotopes": [
+      { "name": "Eu152", "activity_ci": 1e-6 }
+    ],
+    "count_time_sec": 600,
+    "distance_cm": 10,
+    "include_background": true,
+    "shielding_cm": { "Pb": 0.0 }
+  },
+  "cases": [
+    {
+      "name": "eu152_single_10cm",
+      "output": "eu152_single_10cm.spe"
+    }
+  ],
+  "sweeps": [
+    {
+      "name": "eu152_distance_sweep",
+      "output_prefix": "eu152_distance",
+      "parameters": {
+        "distance_cm": { "start": 10, "stop": 30, "step": 10 },
+        "include_background": [true, false]
+      }
+    }
+  ]
+}
+```
+
+Sweep parameters support direct fields such as `distance_cm`,
+`count_time_sec`, and `include_background`, single-isotope activity through
+`activity_ci`, isotope-slot fields such as `isotopes.0.activity_ci`, and shield
+thicknesses such as `shielding_cm.Pb`.
 
 ## CI/CD
 

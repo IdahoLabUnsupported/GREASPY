@@ -89,6 +89,7 @@ def validate_reference_calculation() -> None:
 
 def validate_cli_tools() -> None:
     scripts = [
+        "GREASPY_generate_spe.py",
         "GREASPY_random_spe.py",
         "GREASPY_batch_random_spe.py",
         "GREASPY_batch_random_spe-INL430125.py",
@@ -113,6 +114,72 @@ def validate_cli_tools() -> None:
     assert text.startswith("$SPEC_ID:\n")
     assert "$DATA:\n" in text
     assert "$ENER_FIT:\n" in text
+
+    deterministic_spe = ARTIFACT_DIR / "greaspy_deterministic_eu152.spe"
+    run(
+        [
+            sys.executable,
+            str(TOOLS_DIR / "GREASPY_generate_spe.py"),
+            "--isotope",
+            "Eu152=1e-6",
+            "--count-time",
+            "600",
+            "--distance-cm",
+            "10",
+            "--background",
+            "on",
+            "--output",
+            str(deterministic_spe),
+        ]
+    )
+    deterministic_text = deterministic_spe.read_text(encoding="utf-8")
+    assert "Isotope 1: Eu152 = 1.00E-06 Ci" in deterministic_text
+    assert "Distance Measured = 10 cm" in deterministic_text
+
+    parameter_file = ARTIFACT_DIR / "greaspy_parameters.json"
+    parameter_outdir = ARTIFACT_DIR / "parameter_sweep"
+    parameter_manifest = ARTIFACT_DIR / "parameter_sweep_manifest.json"
+    parameter_file.write_text(
+        json.dumps(
+            {
+                "defaults": {
+                    "isotopes": [{"name": "Eu152", "activity_ci": 1e-6}],
+                    "count_time_sec": 600,
+                    "distance_cm": 10,
+                    "include_background": True,
+                    "shielding_cm": {"Pb": 0.0},
+                },
+                "sweeps": [
+                    {
+                        "name": "eu152_distance",
+                        "parameters": {
+                            "distance_cm": {"values": [10, 20]},
+                        },
+                    }
+                ],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    run(
+        [
+            sys.executable,
+            str(TOOLS_DIR / "GREASPY_generate_spe.py"),
+            "--parameters",
+            str(parameter_file),
+            "--outdir",
+            str(parameter_outdir),
+            "--manifest",
+            str(parameter_manifest),
+        ]
+    )
+    generated_parameter_spectra = sorted(parameter_outdir.glob("*.spe"))
+    assert len(generated_parameter_spectra) == 2
+    manifest = json.loads(parameter_manifest.read_text(encoding="utf-8"))
+    assert manifest["spectra_written"] == 2
+    assert [row["distance_cm"] for row in manifest["spectra"]] == [10.0, 20.0]
 
 
 def normalized_spe_lines(path: Path) -> list[str]:
@@ -197,30 +264,32 @@ def eu152_comparison_summary(expected: list[str], actual: list[str], actual_path
 def validate_eu152_spectrum_fixture() -> None:
     ARTIFACT_DIR.mkdir(exist_ok=True)
     actual_spe = ARTIFACT_DIR / "eu152_1uci_10cm_10min_bg_on_no_shield.spe"
+    parameter_file = ARTIFACT_DIR / "eu152_1uci_10cm_10min_bg_on_no_shield.json"
+    parameter_file.write_text(
+        json.dumps(
+            {
+                "name": "eu152_1uci_10cm_10min_bg_on_no_shield",
+                "output": actual_spe.name,
+                "isotopes": [{"name": "Eu152", "activity_ci": 1e-6}],
+                "count_time_sec": 600,
+                "distance_cm": 10,
+                "include_background": True,
+                "shielding_cm": {},
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     run(
         [
             sys.executable,
-            str(TOOLS_DIR / "GREASPY_random_spe.py"),
-            "--allow-isotopes",
-            "Eu152",
-            "--min-isotopes",
-            "1",
-            "--max-isotopes",
-            "1",
-            "--activity-min",
-            "1e-6",
-            "--activity-max",
-            "1e-6",
-            "--count-time",
-            "600",
-            "--distance-cm",
-            "10",
-            "--background-mode",
-            "on",
-            "--shield-mode",
-            "off",
-            "--output",
-            str(actual_spe),
+            str(TOOLS_DIR / "GREASPY_generate_spe.py"),
+            "--parameters",
+            str(parameter_file),
+            "--outdir",
+            str(ARTIFACT_DIR),
+            "--no-manifest",
         ]
     )
 
