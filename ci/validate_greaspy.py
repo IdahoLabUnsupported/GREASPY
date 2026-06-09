@@ -12,6 +12,13 @@ TOOLS_DIR = REPO_ROOT / "tools"
 ARTIFACT_DIR = REPO_ROOT / "ci_artifacts"
 DATA_PATH = TOOLS_DIR / "data" / "greaspy_validated_data.json.gz"
 EXPECTED_EU152_SPE = REPO_ROOT / "ci" / "expected" / "eu152_1uci_10cm_10min_bg_on_no_shield.spe"
+SUMMARY_PATH = ARTIFACT_DIR / "validation-summary.txt"
+
+
+def record(message: str) -> None:
+    ARTIFACT_DIR.mkdir(exist_ok=True)
+    with SUMMARY_PATH.open("a", encoding="utf-8") as f:
+        f.write(f"{message}\n")
 
 
 def run(args: list[str]) -> subprocess.CompletedProcess[str]:
@@ -159,10 +166,15 @@ def validate_tracked_executable() -> None:
 
 def main() -> None:
     validate_data_catalog()
+    record("data catalog validation passed")
     validate_reference_calculation()
+    record("reference calculation validation passed")
     validate_cli_tools()
+    record("CLI validation and smoke spectrum generation passed")
     validate_eu152_spectrum_fixture()
+    record("Eu152 spectrum fixture comparison passed")
     validate_tracked_executable()
+    record("tracked executable validation passed")
     print("GREASPY CI validation passed.")
 
 
