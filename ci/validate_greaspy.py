@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import datetime as dt
 import gzip
 import hashlib
 import json
+import struct
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
@@ -87,12 +90,82 @@ def validate_reference_calculation() -> None:
         )
 
 
+def validate_export_formats() -> None:
+    if str(TOOLS_DIR) not in sys.path:
+        sys.path.insert(0, str(TOOLS_DIR))
+    from GREASPY import CalcInputs, GreaseDataModel, SHIELDING_MATERIALS
+    from GREASPY_export import (
+        N42_NAMESPACE,
+        build_chn_bytes,
+        build_n42_text,
+        build_spc_bytes,
+        write_spectrum_file,
+    )
+
+    model = GreaseDataModel()
+    inp = CalcInputs(
+        isotopes=[("Eu152", 1e-6)],
+        count_time_sec=600.0,
+        distance_cm=10.0,
+        include_background=True,
+        shielding_cm={m: 0.0 for m in SHIELDING_MATERIALS},
+    )
+    res = model.compute(inp)
+    measured_at = dt.datetime(2026, 6, 9, 12, 34, 56)
+    channel_count = len(res.total_counts)
+
+    chn = build_chn_bytes(inp, res, measurement_datetime=measured_at)
+    assert len(chn) == 32 + channel_count * 4 + 512
+    assert struct.unpack_from("<h", chn, 0)[0] == -1
+    assert struct.unpack_from("<h", chn, 30)[0] == channel_count
+    assert chn[16:24] == b"09JUN261"
+    assert struct.unpack_from("<i", chn, 32)[0] == round(res.total_counts[0])
+    trailer_offset = 32 + channel_count * 4
+    assert struct.unpack_from("<h", chn, trailer_offset)[0] == -102
+    assert abs(struct.unpack_from("<f", chn, trailer_offset + 8)[0] - res.eff_b) < 1e-6
+
+    spc = build_spc_bytes(inp, res, measurement_datetime=measured_at)
+    assert len(spc) % 128 == 0
+    assert struct.unpack_from("<h", spc, 0)[0] == 1
+    assert struct.unpack_from("<h", spc, 2)[0] == 5
+    first_spectrum_record = struct.unpack_from("<h", spc, 60)[0]
+    spectrum_record_count = struct.unpack_from("<h", spc, 62)[0]
+    assert first_spectrum_record == 7
+    assert spectrum_record_count == channel_count // 32
+    assert struct.unpack_from("<h", spc, 64)[0] == channel_count
+    first_spc_count = struct.unpack_from("<f", spc, (first_spectrum_record - 1) * 128)[0]
+    assert abs(first_spc_count - res.total_counts[0]) < max(1e-3, abs(res.total_counts[0]) * 1e-6)
+
+    n42 = build_n42_text(
+        inp,
+        res,
+        measurement_datetime=measured_at,
+        document_uuid="00000000-0000-4000-8000-000000000000",
+    )
+    root = ET.fromstring(n42)
+    ns = {"n": N42_NAMESPACE}
+    assert root.tag == f"{{{N42_NAMESPACE}}}RadInstrumentData"
+    coeffs = root.find(".//n:EnergyCalibration/n:CoefficientValues", ns)
+    assert coeffs is not None
+    assert coeffs.text is not None and coeffs.text.split()[:2] == [f"{res.eff_a:.6f}", f"{res.eff_b:.6f}"]
+    channel_data = root.find(".//n:Spectrum/n:ChannelData", ns)
+    assert channel_data is not None and channel_data.text is not None
+    assert len(channel_data.text.split()) == channel_count
+
+    ARTIFACT_DIR.mkdir(exist_ok=True)
+    for format_name in ("spe", "chn", "n42", "spc"):
+        out_path = ARTIFACT_DIR / f"export_smoke.{format_name}"
+        write_spectrum_file(out_path, inp, res, format_name, measurement_datetime=measured_at)
+        assert out_path.exists()
+        assert out_path.stat().st_size > 100
+
+
 def validate_cli_tools() -> None:
     scripts = [
-        "GREASPY_generate_spe.py",
-        "GREASPY_random_spe.py",
-        "GREASPY_batch_random_spe.py",
-        "GREASPY_batch_random_spe-INL430125.py",
+        "GREASPY_generate_spectrum.py",
+        "GREASPY_random_spectrum.py",
+        "GREASPY_batch_random_spectrum.py",
+        "GREASPY_batch_random_spectrum-INL430125.py",
     ]
     for script in scripts:
         output = run([sys.executable, str(TOOLS_DIR / script), "--help"]).stdout
@@ -103,7 +176,7 @@ def validate_cli_tools() -> None:
     run(
         [
             sys.executable,
-            str(TOOLS_DIR / "GREASPY_random_spe.py"),
+            str(TOOLS_DIR / "GREASPY_random_spectrum.py"),
             "--seed",
             "42",
             "--output",
@@ -119,7 +192,7 @@ def validate_cli_tools() -> None:
     run(
         [
             sys.executable,
-            str(TOOLS_DIR / "GREASPY_generate_spe.py"),
+            str(TOOLS_DIR / "GREASPY_generate_spectrum.py"),
             "--isotope",
             "Eu152=1e-6",
             "--count-time",
@@ -135,6 +208,64 @@ def validate_cli_tools() -> None:
     deterministic_text = deterministic_spe.read_text(encoding="utf-8")
     assert "Isotope 1: Eu152 = 1.00E-06 Ci" in deterministic_text
     assert "Distance Measured = 10 cm" in deterministic_text
+
+    cli_format_dir = ARTIFACT_DIR / "cli_format_exports"
+    cli_format_dir.mkdir(exist_ok=True)
+    default_base = cli_format_dir / "default_format"
+    run(
+        [
+            sys.executable,
+            str(TOOLS_DIR / "GREASPY_generate_spectrum.py"),
+            "--isotope",
+            "Eu152=1e-6",
+            "--count-time",
+            "600",
+            "--distance-cm",
+            "10",
+            "--background",
+            "on",
+            "--output",
+            str(default_base),
+        ]
+    )
+    assert default_base.with_suffix(".spe").exists()
+
+    for format_name in ("spe", "chn", "n42", "spc"):
+        output_base = cli_format_dir / f"eu152_{format_name}"
+        run(
+            [
+                sys.executable,
+                str(TOOLS_DIR / "GREASPY_generate_spectrum.py"),
+                "--format",
+                format_name,
+                "--isotope",
+                "Eu152=1e-6",
+                "--count-time",
+                "600",
+                "--distance-cm",
+                "10",
+                "--background",
+                "on",
+                "--output",
+                str(output_base),
+            ]
+        )
+        output_path = output_base.with_suffix(f".{format_name}")
+        assert output_path.exists()
+        if format_name == "spe":
+            export_text = output_path.read_text(encoding="utf-8")
+            assert export_text.startswith("$SPEC_ID:\n")
+        elif format_name == "chn":
+            export_bytes = output_path.read_bytes()
+            assert struct.unpack_from("<h", export_bytes, 0)[0] == -1
+            assert struct.unpack_from("<h", export_bytes, 30)[0] == 16384
+        elif format_name == "n42":
+            root = ET.fromstring(output_path.read_text(encoding="utf-8"))
+            assert root.tag == "{http://physics.nist.gov/N42/2011/N42}RadInstrumentData"
+        elif format_name == "spc":
+            export_bytes = output_path.read_bytes()
+            assert struct.unpack_from("<h", export_bytes, 0)[0] == 1
+            assert struct.unpack_from("<h", export_bytes, 2)[0] == 5
 
     parameter_file = ARTIFACT_DIR / "greaspy_parameters.json"
     parameter_outdir = ARTIFACT_DIR / "parameter_sweep"
@@ -166,7 +297,7 @@ def validate_cli_tools() -> None:
     run(
         [
             sys.executable,
-            str(TOOLS_DIR / "GREASPY_generate_spe.py"),
+            str(TOOLS_DIR / "GREASPY_generate_spectrum.py"),
             "--parameters",
             str(parameter_file),
             "--outdir",
@@ -284,7 +415,7 @@ def validate_eu152_spectrum_fixture() -> None:
     run(
         [
             sys.executable,
-            str(TOOLS_DIR / "GREASPY_generate_spe.py"),
+            str(TOOLS_DIR / "GREASPY_generate_spectrum.py"),
             "--parameters",
             str(parameter_file),
             "--outdir",
@@ -316,6 +447,8 @@ def main() -> None:
     record("data catalog validation passed")
     validate_reference_calculation()
     record("reference calculation validation passed")
+    validate_export_formats()
+    record("spectrum export format validation passed")
     validate_cli_tools()
     record("CLI validation and smoke spectrum generation passed")
     validate_eu152_spectrum_fixture()

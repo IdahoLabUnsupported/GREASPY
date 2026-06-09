@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Generate deterministic PeakEasy .spe files using GREASPY inputs.
+Generate deterministic spectrum files using GREASPY inputs.
 
 Examples:
-  python GREASPY_generate_spe.py --isotope Eu152=1e-6 --count-time 600 --distance-cm 10 --background on --output eu152.spe
-  python GREASPY_generate_spe.py --parameters parameters.json --outdir output
-  python GREASPY_generate_spe.py --write-example parameters.example.json
+  python GREASPY_generate_spectrum.py --isotope Eu152=1e-6 --count-time 600 --distance-cm 10 --background on --output eu152.spe
+  python GREASPY_generate_spectrum.py --format chn --isotope Eu152=1e-6 --count-time 600 --distance-cm 10 --output eu152.chn
+  python GREASPY_generate_spectrum.py --parameters parameters.json --outdir output
+  python GREASPY_generate_spectrum.py --write-example parameters.example.json
 """
 
 from __future__ import annotations
@@ -19,7 +20,11 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from GREASPY import CalcInputs, GreaseDataModel, SHIELDING_MATERIALS
-from GREASPY_random_spe import build_spe_lines
+from GREASPY_export import (
+    SUPPORTED_SPECTRUM_FORMATS,
+    ensure_format_extension,
+    write_spectrum_file,
+)
 
 
 DEFAULT_CASE_NAME = "greaspy_spectrum"
@@ -294,7 +299,7 @@ def expand_sweep(defaults: Dict[str, Any], sweep: Dict[str, Any]) -> List[Dict[s
         for path, value in zip(paths, combo):
             set_case_path(case, path, value)
         case.setdefault("name", f"{prefix}_{index:04d}")
-        case.setdefault("output", f"{output_prefix}_{index:04d}.spe")
+        case.setdefault("output", f"{output_prefix}_{index:04d}")
         cases.append(case)
     return cases
 
@@ -359,15 +364,23 @@ def normalize_case(raw: Dict[str, Any], model: GreaseDataModel) -> Dict[str, Any
     }
 
 
-def resolve_output_path(raw_output: Optional[Any], outdir: Path, case_name: str, index: int, total: int) -> Path:
+def resolve_output_path(
+    raw_output: Optional[Any],
+    outdir: Path,
+    case_name: str,
+    index: int,
+    total: int,
+    output_format: str,
+) -> Path:
     if raw_output:
         path = Path(str(raw_output)).expanduser()
         if not path.is_absolute():
             path = outdir / path
-        return path.resolve()
+        return ensure_format_extension(path.resolve(), output_format)
 
     stem = _safe_token(case_name)
-    filename = f"{index:04d}_{stem}.spe" if total > 1 else f"{stem}.spe"
+    filename = f"{index:04d}_{stem}" if total > 1 else stem
+    filename = f"{filename}.{output_format}"
     return (outdir / filename).resolve()
 
 
@@ -452,11 +465,17 @@ def print_isotopes(model: GreaseDataModel) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Generate deterministic GREASPY .spe files from CLI inputs or a JSON parameter file."
+        description="Generate deterministic GREASPY spectrum files from CLI inputs or a JSON parameter file."
     )
     parser.add_argument("--parameters", "--parameter-file", type=str, default=None, help="JSON parameter file.")
     parser.add_argument("--outdir", type=str, default=None, help="Output directory for generated files.")
-    parser.add_argument("--output", type=str, default=None, help="Output .spe path for direct CLI mode.")
+    parser.add_argument("--output", type=str, default=None, help="Output spectrum path for direct CLI mode.")
+    parser.add_argument(
+        "--format",
+        choices=SUPPORTED_SPECTRUM_FORMATS,
+        default="spe",
+        help="Output format. Defaults to spe.",
+    )
     parser.add_argument("--manifest", type=str, default=None, help="Optional manifest JSON path.")
     parser.add_argument("--no-manifest", action="store_true", help="Do not write a manifest JSON file.")
     parser.add_argument("--dry-run", action="store_true", help="Print planned spectra without writing files.")
@@ -505,8 +524,13 @@ def main() -> None:
     cases = [normalize_case(raw, model) for raw in raw_cases]
 
     resolved_paths: List[Path] = []
+    resolved_formats: List[str] = []
     for index, case in enumerate(cases, start=1):
-        resolved_paths.append(resolve_output_path(case["output"], outdir, case["name"], index, len(cases)))
+        output_format = args.format
+        resolved_formats.append(output_format)
+        resolved_paths.append(
+            resolve_output_path(case["output"], outdir, case["name"], index, len(cases), output_format)
+        )
 
     duplicates = sorted({p for p in resolved_paths if resolved_paths.count(p) > 1})
     if duplicates:
@@ -514,16 +538,18 @@ def main() -> None:
         raise ValueError(f"Multiple spectra resolve to the same output path:\n{joined}")
 
     manifest_rows: List[Dict[str, Any]] = []
-    for index, (case, out_path) in enumerate(zip(cases, resolved_paths), start=1):
+    for index, (case, out_path, output_format) in enumerate(zip(cases, resolved_paths, resolved_formats), start=1):
         inp = case["inputs"]
-        manifest_rows.append(manifest_entry(index, case["name"], out_path, inp))
+        row = manifest_entry(index, case["name"], out_path, inp)
+        row["format"] = output_format
+        manifest_rows.append(row)
         if args.dry_run:
             print(f"[dry-run] {index}/{len(cases)} {case['name']} -> {out_path}")
             continue
 
         res = model.compute(inp)
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text("\n".join(build_spe_lines(inp, res)) + "\n", encoding="utf-8")
+        write_spectrum_file(out_path, inp, res, output_format)
         print(f"[{index}/{len(cases)}] wrote {out_path}")
 
     if args.no_manifest or args.dry_run:

@@ -4,6 +4,10 @@ All notable changes to GREASPY will be documented in this file.
 
 ## [Unreleased]
 
+- Add shared spectrum exporters for `.spe`, `.chn`, `.n42`, and ORTEC real-format `.spc` files.
+- Rename command-line spectrum scripts from `*_spe.py` to `*_spectrum.py`.
+- Add CI validation for all supported spectrum export formats.
+
 ## [1.0.0] - 2026-06-09
 
 - Add README-style About dialog content and README authors/version sections.
