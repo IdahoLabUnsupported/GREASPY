@@ -21,12 +21,22 @@ import json
 import math
 import platform
 import sys
-import tkinter as tk
 from dataclasses import dataclass
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
-from tkinter.scrolledtext import ScrolledText
 from typing import Any, Dict, List, Optional, Tuple
+
+try:
+    import tkinter as tk
+    from tkinter import filedialog, messagebox, ttk
+    from tkinter.scrolledtext import ScrolledText
+    TK_AVAILABLE = True
+except Exception:
+    tk = None
+    filedialog = None
+    messagebox = None
+    ttk = None
+    ScrolledText = None
+    TK_AVAILABLE = False
 
 try:
     import matplotlib
@@ -40,6 +50,8 @@ except Exception:
     FigureCanvasTkAgg = None
     NavigationToolbar2Tk = None
     MATPLOTLIB_VERSION = "not available"
+
+_TkBase = tk.Tk if TK_AVAILABLE else object
 
 DEAD_TIME_FACTOR = 0.0000580138947
 NUM_BINS = 16384
@@ -338,8 +350,12 @@ class GreaseDataModel:
         )
 
 
-class GreaseApp(tk.Tk):
+class GreaseApp(_TkBase):
     def __init__(self):
+        if not TK_AVAILABLE:
+            raise RuntimeError(
+                "Tkinter is not available; install a Python distribution with Tk support to run the GUI."
+            )
         super().__init__()
         self.title(APP_TITLE)
         self.geometry("1600x900")
@@ -518,7 +534,7 @@ class GreaseApp(tk.Tk):
                 f"- Target: {APP_BUILD_TARGET}",
                 f"- Runtime mode: {runtime_mode}",
                 f"- Python: {platform.python_version()}",
-                f"- Tk: {tk.TkVersion}",
+                f"- Tk: {tk.TkVersion if TK_AVAILABLE else 'not available'}",
                 f"- matplotlib: {MATPLOTLIB_VERSION}",
                 "",
                 "Validated Data:",

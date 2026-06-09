@@ -73,6 +73,16 @@ python .\tools\GREASPY_batch_random_spe-INL430125.py --outdir output\batch --sam
 
 Use `--help` with any command-line script to see its full option set.
 
+## CI/CD
+
+GitLab CI validates every branch and merge request with source compilation,
+catalog integrity checks, reference calculation checks, CLI help checks, and a
+smoke-generated `.spe` artifact.
+
+Pipelines on `main` and tags also publish `dist/greaspy-release.zip` as a job
+artifact. The release zip includes the tracked executable, source tools,
+validated data catalog, README, changelog, license, and requirements files.
+
 ## Changelog
 
 See `CHANGELOG.md` for release history and notable changes.

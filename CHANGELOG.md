@@ -4,6 +4,8 @@ All notable changes to GREASPY will be documented in this file.
 
 ## [Unreleased]
 
+- Add GitLab CI validation and release artifact packaging.
+- Allow GREASPY calculation modules to import in headless CI environments.
 - Add project license and changelog.
 
 ## [0.2.0] - 2026-06-09
@@ -28,4 +30,3 @@ All notable changes to GREASPY will be documented in this file.
 - Tkinter GREASPY desktop application.
 - Random single-file and batch `.spe` generation tools.
 - Project README, runtime requirements, and ignore rules.
-

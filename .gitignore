@@ -21,6 +21,7 @@ manifest*.json
 greaspy_batch_*/
 output/
 outputs/
+ci_artifacts/
 
 # Excel workbooks stay outside this repository
 *.xlsx
@@ -35,4 +36,3 @@ validation/
 .vscode/
 .DS_Store
 Thumbs.db
-
