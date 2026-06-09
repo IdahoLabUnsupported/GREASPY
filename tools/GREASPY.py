@@ -63,7 +63,7 @@ APP_NAME = "GREASPY"
 APP_TITLE = "GREASPY - GREASE/GREASY Standalone"
 APP_VERSION = "1.0"
 APP_RELEASE_VERSION = "1.0.0"
-APP_BUILD_STAMP = "2026-06-09 12:59:32 -06:00"
+APP_BUILD_STAMP = "2026-06-09 14:23:38 -06:00"
 APP_BUILD_TARGET = "Windows AMD64 executable (PyInstaller one-file)"
 APP_AUTHORS = [
     "Dr. Michael Reichenber, Idaho National Laboratory",
