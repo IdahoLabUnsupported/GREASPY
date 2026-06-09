@@ -80,6 +80,9 @@ catalog integrity checks, reference calculation checks, CLI help checks, and a
 smoke-generated `.spe` artifact. It also regenerates a fixed Eu-152 spectrum
 case and compares the result against `ci/expected/eu152_1uci_10cm_10min_bg_on_no_shield.spe`.
 
+The validate job intentionally avoids `pip` and third-party installation so it
+can run on shell runners with the system Python.
+
 Pipelines on `main` and tags also publish `dist/greaspy-release.zip` as a job
 artifact. The release zip includes the tracked executable, source tools,
 validated data catalog, README, changelog, license, and requirements files.
