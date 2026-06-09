@@ -22,14 +22,17 @@ def record(message: str) -> None:
 
 
 def run(args: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    result = subprocess.run(
         args,
         cwd=REPO_ROOT,
-        check=True,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
     )
+    if result.returncode != 0:
+        print(result.stdout)
+        raise subprocess.CalledProcessError(result.returncode, args, output=result.stdout)
+    return result
 
 
 def validate_data_catalog() -> None:

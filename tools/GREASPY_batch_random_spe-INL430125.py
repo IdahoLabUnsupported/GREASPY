@@ -13,9 +13,7 @@ import datetime as dt
 import json
 import math
 import random
-import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from GREASPY import CalcInputs, CalcResults, GreaseDataModel, SHIELDING_MATERIALS
@@ -41,6 +39,12 @@ def _safe_token(s: str) -> str:
 def resolve_outdir(path_arg: Optional[str]) -> Path:
     if path_arg:
         return Path(path_arg).expanduser().resolve()
+
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+    except Exception as exc:
+        raise RuntimeError("Tkinter is not available; provide --outdir when running headlessly.") from exc
 
     root = tk.Tk()
     root.withdraw()
