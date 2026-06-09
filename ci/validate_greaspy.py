@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gzip
+import hashlib
 import json
 import subprocess
 import sys
@@ -123,6 +124,76 @@ def normalized_spe_lines(path: Path) -> list[str]:
     raise AssertionError(f"{path} does not contain a $DATE_MEA section")
 
 
+def normalized_spe_sha256(lines: list[str]) -> str:
+    text = "\n".join(lines) + "\n"
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def extract_spe_counts(lines: list[str], path: Path) -> tuple[int, int, list[float]]:
+    try:
+        data_idx = lines.index("$DATA:")
+        fit_idx = lines.index("$ENER_FIT:")
+    except ValueError as exc:
+        raise AssertionError(f"{path} does not contain expected $DATA/$ENER_FIT sections") from exc
+
+    start_txt, end_txt = lines[data_idx + 1].split()
+    start = int(start_txt)
+    end = int(end_txt)
+    counts = [float(v) for v in lines[data_idx + 2:fit_idx]]
+    expected_count = end - start + 1
+    assert len(counts) == expected_count, (
+        f"{path} contains {len(counts)} count channels; expected {expected_count}"
+    )
+    return start, end, counts
+
+
+def eu152_comparison_summary(expected: list[str], actual: list[str], actual_path: Path) -> list[str]:
+    exp_start, exp_end, exp_counts = extract_spe_counts(expected, EXPECTED_EU152_SPE)
+    act_start, act_end, act_counts = extract_spe_counts(actual, actual_path)
+    assert (act_start, act_end) == (exp_start, exp_end), (
+        f"Generated spectrum channel range {act_start}-{act_end} does not match "
+        f"fixture range {exp_start}-{exp_end}"
+    )
+    assert len(act_counts) == len(exp_counts), "Generated and fixture spectra have different channel counts"
+
+    deltas = [actual_count - expected_count for expected_count, actual_count in zip(exp_counts, act_counts)]
+    max_abs_delta = max((abs(delta) for delta in deltas), default=0.0)
+    total_expected = sum(exp_counts)
+    total_actual = sum(act_counts)
+    total_delta = total_actual - total_expected
+    line_match = actual == expected
+
+    summary = [
+        "Eu152 fixture comparison summary:",
+        f"- expected artifact: {EXPECTED_EU152_SPE.relative_to(REPO_ROOT)}",
+        f"- generated artifact: {actual_path.relative_to(REPO_ROOT)}",
+        f"- normalized expected SHA256: {normalized_spe_sha256(expected)}",
+        f"- normalized generated SHA256: {normalized_spe_sha256(actual)}",
+        f"- normalized line comparison: {'MATCH' if line_match else 'DIFFER'}",
+        f"- channels compared: {len(exp_counts)} ({exp_start}-{exp_end})",
+        f"- expected total counts: {total_expected:.6f}",
+        f"- generated total counts: {total_actual:.6f}",
+        f"- total count delta: {total_delta:.6e}",
+        f"- max channel absolute delta: {max_abs_delta:.6e}",
+    ]
+
+    if not line_match:
+        for idx, (expected_line, actual_line) in enumerate(zip(expected, actual), start=1):
+            if expected_line != actual_line:
+                summary.extend(
+                    [
+                        f"- first differing normalized line: {idx}",
+                        f"  expected: {expected_line}",
+                        f"  actual: {actual_line}",
+                    ]
+                )
+                break
+        if len(actual) != len(expected):
+            summary.append(f"- normalized line count delta: {len(actual) - len(expected)}")
+
+    return summary
+
+
 def validate_eu152_spectrum_fixture() -> None:
     ARTIFACT_DIR.mkdir(exist_ok=True)
     actual_spe = ARTIFACT_DIR / "eu152_1uci_10cm_10min_bg_on_no_shield.spe"
@@ -155,6 +226,10 @@ def validate_eu152_spectrum_fixture() -> None:
 
     expected = normalized_spe_lines(EXPECTED_EU152_SPE)
     actual = normalized_spe_lines(actual_spe)
+    for line in eu152_comparison_summary(expected, actual, actual_spe):
+        print(line)
+        record(line)
+
     assert actual == expected, (
         "Generated Eu152 spectrum differs from the expected CI fixture "
         f"({EXPECTED_EU152_SPE})."

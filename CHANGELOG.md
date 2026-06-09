@@ -4,6 +4,7 @@ All notable changes to GREASPY will be documented in this file.
 
 ## [Unreleased]
 
+- Print a Eu-152 fixture comparison summary in CI logs.
 - Make the INL430125 batch CLI help path independent of Tkinter for headless CI runners.
 - Make GitLab CI validation shell-runner friendly by removing pip installation from the validate path.
 - Add a deterministic Eu-152 `.spe` fixture comparison to CI validation.
