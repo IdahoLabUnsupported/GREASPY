@@ -4,6 +4,9 @@ All notable changes to GREASPY will be documented in this file.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-06-09
+
+- Add README-style About dialog content and README authors/version sections.
 - Add a deterministic `.spe` generator with direct CLI inputs and JSON parameter-file sweeps.
 - Print a Eu-152 fixture comparison summary in CI logs.
 - Make the INL430125 batch CLI help path independent of Tkinter for headless CI runners.

@@ -59,12 +59,13 @@ DATA_SCHEMA_VERSION = 1
 DEFAULT_DATA_FILE = "greaspy_validated_data.json.gz"
 APP_NAME = "GREASPY"
 APP_TITLE = "GREASPY - GREASE/GREASY Standalone"
-APP_VERSION = "2026.03.19"
-APP_BUILD_STAMP = "2026-03-19 14:45:00 -06:00"
+APP_VERSION = "1.0"
+APP_RELEASE_VERSION = "1.0.0"
+APP_BUILD_STAMP = "2026-06-09 12:59:32 -06:00"
 APP_BUILD_TARGET = "Windows AMD64 executable (PyInstaller one-file)"
 APP_AUTHORS = [
-    "Dr. Michael Reichenber",
-    "Dr. Tommy Holschuh",
+    "Dr. Michael Reichenber, Idaho National Laboratory",
+    "Dr. Tommy Holschuh, Idaho National Laboratory",
 ]
 APP_ORGANIZATION = "Idaho National Laboratory"
 APP_FEATURES = [
@@ -514,33 +515,62 @@ class GreaseApp(_TkBase):
                 f"{self.model.data_path.name} | version={self.model.data_version} | "
                 f"profile={self.model.profile} | shielding={self.model.has_shielding}"
             )
+        data_version = self.model.data_version if self.model else "unknown"
+        data_profile = self.model.profile if self.model else "unknown"
+        isotope_count = len(self.model.isotope_names()) if self.model else "unknown"
 
         lines = [
             APP_TITLE,
             "",
-            "Features:",
+            "Overview:",
+            "Python tools and a Windows executable for GREASE/GREASPY spectrum calculations",
+            "and PeakEasy-compatible .spe generation.",
+            "",
+            "GREASPY uses a packaged, validated data catalog at runtime. It does not",
+            "require the original Excel workbook to run.",
+            "",
+            "Version Information:",
+            f"- Application version: {APP_VERSION}",
+            f"- Release version: {APP_RELEASE_VERSION}",
+            f"- Build stamp: {APP_BUILD_STAMP}",
+            f"- Target: {APP_BUILD_TARGET}",
+            f"- Runtime mode: {runtime_mode}",
+            f"- Python: {platform.python_version()}",
+            f"- Tk: {tk.TkVersion if TK_AVAILABLE else 'not available'}",
+            f"- matplotlib: {MATPLOTLIB_VERSION}",
+            f"- Validated data version: {data_version}",
+            f"- Validated data profile: {data_profile}",
+            f"- Data schema version: {DATA_SCHEMA_VERSION}",
+            f"- Isotopes in catalog: {isotope_count}",
+            "",
+            "Authors:",
         ]
+        lines.extend(f"- {author}" for author in APP_AUTHORS)
+        lines.extend(
+            [
+                "",
+                "Capabilities:",
+            ]
+        )
         lines.extend(f"- {feature}" for feature in APP_FEATURES)
         lines.extend(
             [
                 "",
-                "Authors:",
-                *(f"- {author}" for author in APP_AUTHORS),
-                f"- {APP_ORGANIZATION}",
-                "",
-                "Build Information:",
-                f"- Version: {APP_VERSION}",
-                f"- Build stamp: {APP_BUILD_STAMP}",
-                f"- Target: {APP_BUILD_TARGET}",
-                f"- Runtime mode: {runtime_mode}",
-                f"- Python: {platform.python_version()}",
-                f"- Tk: {tk.TkVersion if TK_AVAILABLE else 'not available'}",
-                f"- matplotlib: {MATPLOTLIB_VERSION}",
+                "Included Tools:",
+                "- bin/GREASPY.exe - Windows executable.",
+                "- tools/GREASPY.py - Tkinter desktop application and shared calculation engine.",
+                "- tools/GREASPY_generate_spe.py - Deterministic .spe generator from direct inputs or JSON parameter files.",
+                "- tools/GREASPY_random_spe.py - Command-line generator for one randomized .spe file.",
+                "- tools/GREASPY_batch_random_spe.py - Command-line generator for batches of randomized .spe files.",
+                "- tools/data/greaspy_validated_data.json.gz - Packaged validated GREASPY data catalog.",
                 "",
                 "Validated Data:",
                 f"- Catalog: {data_status}",
                 f"- Source data snapshot: {self.model.source_name if self.model else 'unknown'}",
                 f"- Source SHA256: {self.model.source_sha256 if self.model else 'unknown'}",
+                "",
+                "License:",
+                "- GREASPY is available under the MIT License.",
                 "",
                 "Current Session:",
                 f"- Results available: {'Yes' if self.results is not None else 'No'}",

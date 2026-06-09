@@ -6,6 +6,18 @@ and PeakEasy-compatible `.spe` generation.
 GREASPY now uses a packaged, validated data catalog at runtime. It does not
 require the original Excel workbook to run.
 
+## Version Information
+
+- GREASPY application version: 1.0
+- GREASPY release version: 1.0.0
+- Validated data catalog version: 2026.03.19
+- Validated data schema version: 1
+
+## Authors
+
+- Dr. Michael Reichenber, Idaho National Laboratory
+- Dr. Tommy Holschuh, Idaho National Laboratory
+
 ## Repository Contents
 
 - `bin/GREASPY.exe` - rebuilt Windows executable.
