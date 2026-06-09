@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Batch-generate randomized SPE files using GREASPY tools.
+Batch-generate randomized spectrum files using GREASPY tools.
 
-This script reuses GREASPY_random_spe helpers and produces a folder of files.
+This script reuses GREASPY_random_spectrum helpers and produces a folder of files.
 """
 
 from __future__ import annotations
@@ -15,7 +15,12 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 from GREASPY import CalcInputs, GreaseDataModel, SHIELDING_MATERIALS
-from GREASPY_random_spe import build_default_filename, build_spe_lines
+from GREASPY_export import (
+    SUPPORTED_SPECTRUM_FORMATS,
+    extension_for_format,
+    write_spectrum_file,
+)
+from GREASPY_random_spectrum import build_default_filename
 
 
 def sample_activity(rng: random.Random, low: float, high: float, space: str) -> float:
@@ -26,10 +31,16 @@ def sample_activity(rng: random.Random, low: float, high: float, space: str) -> 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Generate a batch of randomized GREASPY SPE files into one folder."
+        description="Generate a batch of randomized GREASPY spectrum files into one folder."
     )
-    parser.add_argument("--count", type=int, default=100, help="Number of SPE files to generate.")
-    parser.add_argument("--outdir", type=str, default=None, help="Output directory for SPE files.")
+    parser.add_argument("--count", type=int, default=100, help="Number of spectrum files to generate.")
+    parser.add_argument("--outdir", type=str, default=None, help="Output directory for spectrum files.")
+    parser.add_argument(
+        "--format",
+        choices=SUPPORTED_SPECTRUM_FORMATS,
+        default="spe",
+        help="Output spectrum format.",
+    )
     parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility.")
 
     parser.add_argument("--min-isotopes", type=int, default=1, help="Minimum isotopes per file.")
@@ -158,12 +169,17 @@ def main() -> None:
             shielding_cm=shielding_cm,
         )
         res = model.compute(inp)
-        lines = build_spe_lines(inp, res)
 
         ts = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-        name = build_default_filename(isotopes, include_bg, shielding_cm, f"{ts}_{i:06d}")
+        name = build_default_filename(
+            isotopes,
+            include_bg,
+            shielding_cm,
+            f"{ts}_{i:06d}",
+            extension=extension_for_format(args.format),
+        )
         outpath = outdir / name
-        outpath.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        write_spectrum_file(outpath, inp, res, args.format)
 
         if i == 1 or i % 10 == 0 or i == args.count:
             print(f"[{i}/{args.count}] {outpath.name}")

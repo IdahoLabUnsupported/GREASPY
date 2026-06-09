@@ -1,7 +1,7 @@
 # GREASPY
 
 Python tools and a Windows executable for GREASE/GREASPY spectrum calculations
-and PeakEasy-compatible `.spe` generation.
+and spectrum generation in `.spe`, `.chn`, `.n42`, and `.spc` formats.
 
 GREASPY now uses a packaged, validated data catalog at runtime. It does not
 require the original Excel workbook to run.
@@ -22,10 +22,11 @@ require the original Excel workbook to run.
 
 - `bin/GREASPY.exe` - rebuilt Windows executable.
 - `tools/GREASPY.py` - Tkinter desktop application and shared calculation engine.
-- `tools/GREASPY_generate_spe.py` - deterministic command-line `.spe` generator from direct inputs or a JSON parameter file.
-- `tools/GREASPY_random_spe.py` - command-line generator for one randomized `.spe` file.
-- `tools/GREASPY_batch_random_spe.py` - command-line generator for batches of randomized `.spe` files.
-- `tools/GREASPY_batch_random_spe-INL430125.py` - INL430125 batch-generation variant with manifest output and optional folder picker.
+- `tools/GREASPY_generate_spectrum.py` - deterministic command-line spectrum generator from direct inputs or a JSON parameter file.
+- `tools/GREASPY_random_spectrum.py` - command-line generator for one randomized spectrum file.
+- `tools/GREASPY_batch_random_spectrum.py` - command-line generator for batches of randomized spectrum files.
+- `tools/GREASPY_batch_random_spectrum-INL430125.py` - INL430125 batch-generation variant with manifest output and optional folder picker.
+- `tools/GREASPY_export.py` - shared `.spe`, `.chn`, `.n42`, and `.spc` exporters.
 - `tools/data/greaspy_validated_data.json.gz` - packaged validated GREASPY data catalog.
 - `CHANGELOG.md` - release history and notable project changes.
 - `LICENSE` - general-use project license.
@@ -69,44 +70,50 @@ python .\tools\GREASPY.py
 Generate one randomized `.spe` file:
 
 ```powershell
-python .\tools\GREASPY_random_spe.py --output output\sample.spe
+python .\tools\GREASPY_random_spectrum.py --output output\sample.spe
 ```
 
 Generate one deterministic `.spe` file:
 
 ```powershell
-python .\tools\GREASPY_generate_spe.py --isotope Eu152=1e-6 --count-time 600 --distance-cm 10 --background on --output output\eu152_10cm.spe
+python .\tools\GREASPY_generate_spectrum.py --isotope Eu152=1e-6 --count-time 600 --distance-cm 10 --background on --output output\eu152_10cm.spe
+```
+
+Generate another supported format:
+
+```powershell
+python .\tools\GREASPY_generate_spectrum.py --format n42 --isotope Eu152=1e-6 --count-time 600 --distance-cm 10 --output output\eu152_10cm.n42
 ```
 
 Generate deterministic spectra from a JSON parameter file:
 
 ```powershell
-python .\tools\GREASPY_generate_spe.py --parameters parameters.json --outdir output\parameters
+python .\tools\GREASPY_generate_spectrum.py --parameters parameters.json --outdir output\parameters
 ```
 
 Write a starter parameter file:
 
 ```powershell
-python .\tools\GREASPY_generate_spe.py --write-example parameters.example.json
+python .\tools\GREASPY_generate_spectrum.py --write-example parameters.example.json
 ```
 
-Generate a batch of randomized `.spe` files:
+Generate a batch of randomized spectrum files:
 
 ```powershell
-python .\tools\GREASPY_batch_random_spe.py --outdir output\batch --count 100
+python .\tools\GREASPY_batch_random_spectrum.py --outdir output\batch --count 100
 ```
 
 Run the INL430125 batch variant:
 
 ```powershell
-python .\tools\GREASPY_batch_random_spe-INL430125.py --outdir output\batch --samples 100
+python .\tools\GREASPY_batch_random_spectrum-INL430125.py --outdir output\batch --samples 100
 ```
 
 Use `--help` with any command-line script to see its full option set.
 
 ### Deterministic Parameter Files
 
-`GREASPY_generate_spe.py` accepts a single spectrum, explicit cases, or sweeps.
+`GREASPY_generate_spectrum.py` accepts a single spectrum, explicit cases, or sweeps.
 Relative output paths are written under `--outdir`; if `--outdir` is omitted,
 they are written next to the parameter file.
 
@@ -148,9 +155,10 @@ thicknesses such as `shielding_cm.Pb`.
 ## CI/CD
 
 GitLab CI validates every branch and merge request with source compilation,
-catalog integrity checks, reference calculation checks, CLI help checks, and a
-smoke-generated `.spe` artifact. It also regenerates a fixed Eu-152 spectrum
-case and compares the result against `ci/expected/eu152_1uci_10cm_10min_bg_on_no_shield.spe`.
+catalog integrity checks, reference calculation checks, CLI help checks, and
+export checks for `.spe`, `.chn`, `.n42`, and `.spc` spectra. It also
+regenerates a fixed Eu-152 `.spe` spectrum case and compares the result
+against `ci/expected/eu152_1uci_10cm_10min_bg_on_no_shield.spe`.
 The pipeline log prints a compact comparison summary with normalized hashes,
 channel totals, and per-channel delta information.
 
@@ -187,7 +195,7 @@ The repo excludes:
 
 - legacy Excel workbook source files (`*.xlsx`, `*.xlsm`, `*.xls`)
 - validation harnesses, validation cases, and validation artifacts
-- generated `.spe` and `.csv` outputs
+- generated `.spe`, `.chn`, `.n42`, `.spc`, and `.csv` outputs
 - transient PyInstaller `build/` output
 - Python caches and virtual environments
 
