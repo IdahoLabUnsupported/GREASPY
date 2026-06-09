@@ -15,6 +15,8 @@ default:
     paths:
       - .cache/pip/
   before_script:
+    - mkdir -p ci_artifacts
+    - printf "GREASPY job started at %s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > ci_artifacts/validation-summary.txt
     - python --version
     - python -m pip install --upgrade pip
     - python -m pip install -r requirements.txt
@@ -26,15 +28,15 @@ variables:
 validate:
   stage: validate
   script:
-    - mkdir -p ci_artifacts
-    - printf "GREASPY validation started at %s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > ci_artifacts/validation-summary.txt
+    - printf "GREASPY validation started at %s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ci_artifacts/validation-summary.txt
     - python -m compileall -q tools ci
     - python ci/validate_greaspy.py
   artifacts:
     when: always
     expire_in: 1 week
     paths:
-      - ci_artifacts/
+      - ci_artifacts/validation-summary.txt
+      - ci_artifacts/*.spe
 
 package_release:
   stage: package
