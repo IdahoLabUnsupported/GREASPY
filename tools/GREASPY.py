@@ -63,7 +63,7 @@ APP_NAME = "GREASPY"
 APP_TITLE = "GREASPY - GREASE/GREASY Standalone"
 APP_VERSION = "1.0"
 APP_RELEASE_VERSION = "1.0.0"
-APP_BUILD_STAMP = "2026-06-09 14:23:38 -06:00"
+APP_BUILD_STAMP = "2026-06-09 14:29:12 -06:00"
 APP_BUILD_TARGET = "Windows AMD64 executable (PyInstaller one-file)"
 APP_AUTHORS = [
     "Dr. Michael Reichenber, Idaho National Laboratory",
@@ -363,6 +363,13 @@ class GreaseApp(_TkBase):
         self.title(APP_TITLE)
         self.geometry("1600x900")
 
+        self._closing = False
+        self.fig = None
+        self.ax = None
+        self.canvas = None
+        self.toolbar = None
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+
         self.model: Optional[GreaseDataModel] = None
         self.results: Optional[CalcResults] = None
 
@@ -381,6 +388,38 @@ class GreaseApp(_TkBase):
 
         self._build_ui()
         self._load_data_catalog()
+
+    def _on_close(self):
+        if self._closing:
+            return
+        self._closing = True
+
+        if self.canvas is not None:
+            try:
+                self.canvas.get_tk_widget().destroy()
+            except Exception:
+                pass
+            self.canvas = None
+
+        if self.toolbar is not None:
+            try:
+                self.toolbar.destroy()
+            except Exception:
+                pass
+            self.toolbar = None
+
+        if plt is not None and self.fig is not None:
+            try:
+                plt.close(self.fig)
+            except Exception:
+                pass
+        self.fig = None
+        self.ax = None
+
+        try:
+            self.quit()
+        finally:
+            self.destroy()
 
     def _build_ui(self):
         main = ttk.Panedwindow(self, orient=tk.HORIZONTAL)
@@ -479,10 +518,6 @@ class GreaseApp(_TkBase):
             self.toolbar = NavigationToolbar2Tk(self.canvas, plot_wrap)
             self.toolbar.update()
         else:
-            self.fig = None
-            self.ax = None
-            self.canvas = None
-            self.toolbar = None
             ttk.Label(plot_wrap, text="matplotlib not available - plotting disabled.").pack(anchor=tk.W)
 
     def _load_data_catalog(self):
@@ -820,7 +855,11 @@ class GreaseApp(_TkBase):
 
 def main():
     app = GreaseApp()
-    app.mainloop()
+    try:
+        app.mainloop()
+    finally:
+        if plt is not None:
+            plt.close("all")
 
 
 if __name__ == "__main__":
