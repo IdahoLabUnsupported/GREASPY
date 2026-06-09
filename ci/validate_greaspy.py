@@ -11,6 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 TOOLS_DIR = REPO_ROOT / "tools"
 ARTIFACT_DIR = REPO_ROOT / "ci_artifacts"
 DATA_PATH = TOOLS_DIR / "data" / "greaspy_validated_data.json.gz"
+EXPECTED_EU152_SPE = REPO_ROOT / "ci" / "expected" / "eu152_1uci_10cm_10min_bg_on_no_shield.spe"
 
 
 def run(args: list[str]) -> subprocess.CompletedProcess[str]:
@@ -103,6 +104,53 @@ def validate_cli_tools() -> None:
     assert "$ENER_FIT:\n" in text
 
 
+def normalized_spe_lines(path: Path) -> list[str]:
+    lines = path.read_text(encoding="utf-8-sig").splitlines()
+    for i, line in enumerate(lines[:-1]):
+        if line == "$DATE_MEA:":
+            lines[i + 1] = "<normalized measurement date>"
+            return lines
+    raise AssertionError(f"{path} does not contain a $DATE_MEA section")
+
+
+def validate_eu152_spectrum_fixture() -> None:
+    ARTIFACT_DIR.mkdir(exist_ok=True)
+    actual_spe = ARTIFACT_DIR / "eu152_1uci_10cm_10min_bg_on_no_shield.spe"
+    run(
+        [
+            sys.executable,
+            str(TOOLS_DIR / "GREASPY_random_spe.py"),
+            "--allow-isotopes",
+            "Eu152",
+            "--min-isotopes",
+            "1",
+            "--max-isotopes",
+            "1",
+            "--activity-min",
+            "1e-6",
+            "--activity-max",
+            "1e-6",
+            "--count-time",
+            "600",
+            "--distance-cm",
+            "10",
+            "--background-mode",
+            "on",
+            "--shield-mode",
+            "off",
+            "--output",
+            str(actual_spe),
+        ]
+    )
+
+    expected = normalized_spe_lines(EXPECTED_EU152_SPE)
+    actual = normalized_spe_lines(actual_spe)
+    assert actual == expected, (
+        "Generated Eu152 spectrum differs from the expected CI fixture "
+        f"({EXPECTED_EU152_SPE})."
+    )
+
+
 def validate_tracked_executable() -> None:
     exe = REPO_ROOT / "bin" / "GREASPY.exe"
     assert exe.exists(), "bin/GREASPY.exe is missing"
@@ -113,10 +161,10 @@ def main() -> None:
     validate_data_catalog()
     validate_reference_calculation()
     validate_cli_tools()
+    validate_eu152_spectrum_fixture()
     validate_tracked_executable()
     print("GREASPY CI validation passed.")
 
 
 if __name__ == "__main__":
     main()
-

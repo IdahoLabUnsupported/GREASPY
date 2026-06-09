@@ -16,6 +16,7 @@ dist/
 
 # Generated tool outputs
 *.spe
+!ci/expected/*.spe
 *.csv
 manifest*.json
 greaspy_batch_*/

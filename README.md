@@ -77,7 +77,8 @@ Use `--help` with any command-line script to see its full option set.
 
 GitLab CI validates every branch and merge request with source compilation,
 catalog integrity checks, reference calculation checks, CLI help checks, and a
-smoke-generated `.spe` artifact.
+smoke-generated `.spe` artifact. It also regenerates a fixed Eu-152 spectrum
+case and compares the result against `ci/expected/eu152_1uci_10cm_10min_bg_on_no_shield.spe`.
 
 Pipelines on `main` and tags also publish `dist/greaspy-release.zip` as a job
 artifact. The release zip includes the tracked executable, source tools,

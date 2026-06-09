@@ -4,6 +4,7 @@ All notable changes to GREASPY will be documented in this file.
 
 ## [Unreleased]
 
+- Add a deterministic Eu-152 `.spe` fixture comparison to CI validation.
 - Add GitLab CI validation and release artifact packaging.
 - Allow GREASPY calculation modules to import in headless CI environments.
 - Add project license and changelog.
