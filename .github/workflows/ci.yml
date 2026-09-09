@@ -1,0 +1,59 @@
+# Copyright 2026, Battelle Energy Alliance, LLC. All Rights Reserved.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["**"]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Prepare artifacts directory
+        run: |
+          mkdir -p ci_artifacts
+          printf "GREASPY job started at %s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > ci_artifacts/validation-summary.txt
+          python --version
+
+      - name: Validate
+        run: |
+          printf "GREASPY validation started at %s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ci_artifacts/validation-summary.txt
+          python -m compileall -q tools ci
+          python ci/validate_greaspy.py
+
+      - name: Upload validation artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci_artifacts
+          path: ci_artifacts/
+          retention-days: 7
+
+  package_release:
+    needs: validate
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Package release
+        run: python ci/package_release.py
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: greaspy-${{ github.ref_name }}
+          path: dist/greaspy-release.zip
+          retention-days: 30

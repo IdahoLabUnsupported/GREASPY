@@ -156,7 +156,7 @@ thicknesses such as `shielding_cm.Pb`.
 
 ## CI/CD
 
-GitLab CI validates every branch and merge request with source compilation,
+GitHub Actions validates every branch and pull request with source compilation,
 catalog integrity checks, reference calculation checks, CLI help checks, and
 export checks for `.spe`, `.chn`, `.n42`, and `.spc` spectra. It also
 regenerates a fixed Eu-152 `.spe` spectrum case and compares the result
