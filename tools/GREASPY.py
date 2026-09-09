@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Copyright 2026, Battelle Energy Alliance, LLC. All Rights Reserved.
 """
 GREASPY: standalone GREASE/GREASY spectrum tool.
 

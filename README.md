@@ -1,3 +1,5 @@
+<!-- Copyright 2026, Battelle Energy Alliance, LLC. All Rights Reserved. -->
+
 # GREASPY
 
 Python tools and a Windows executable for GREASE/GREASPY spectrum calculations
