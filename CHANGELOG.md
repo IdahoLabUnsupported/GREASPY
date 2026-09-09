@@ -1,3 +1,5 @@
+<!-- Copyright 2026, Battelle Energy Alliance, LLC. All Rights Reserved. -->
+
 # Changelog
 
 All notable changes to GREASPY will be documented in this file.

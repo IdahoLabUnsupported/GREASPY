@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Copyright 2026, Battelle Energy Alliance, LLC. All Rights Reserved.
 """
 Generate batches of randomized spectrum files using the GREASPY engine.
 
